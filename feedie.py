@@ -31,6 +31,7 @@ import random
 import socket
 import signal
 import sgmllib
+import requests
 import itertools
 import threading
 import feedparser
