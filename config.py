@@ -10,8 +10,6 @@ feedie = {
 network = {
     'server': 'irc.jen.de.euirc.net',
     'port': 6667,
-    'SSL': False,
-    'ipv6': False,
     'password': '',
     'bot_nick': 'FEED',
     'bot_name': 'feedie pyBot v1.0',
