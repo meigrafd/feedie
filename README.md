@@ -11,8 +11,8 @@
 
 ## Required:
 ```
-apt-get install python3-feedparser python3-openssl python3-irc python3-pip
-pip3 install sgmllib3k
+apt-get install python3-pip libffi-dev
+pip3 install pyopenssl feedparser irc requests sgmllib3k
 ```
 
 ## Installation:

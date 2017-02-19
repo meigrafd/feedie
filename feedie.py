@@ -11,8 +11,8 @@
 # https://github.com/jaraco/irc
 #
 # Required:
-# apt-get install python3-feedparser python3-openssl python3-irc
-# pip3 install sgmllib3k
+# apt-get install python3-pip libffi-dev
+# pip3 install pyopenssl feedparser irc requests sgmllib3k
 #
 # TODO:
 # http://stackoverflow.com/a/36572948
@@ -75,11 +75,12 @@ class _Feeds(threading.Thread):
             response = requests.get(self.service_url, params=get_params, headers=self.headers)
         except (requests.ConnectionError, requests.HTTPError, requests.Timeout) as error:
             print('%s:%s' % (error.code, error.msg))
+            return long_url
             #sleep(2)
             #response = self.shorten_url(long_url)
         try: response.close()
         except: pass
-        return response.text is not None
+        return response.text
     
     
     def getHeadlines(self, feed):
@@ -126,20 +127,30 @@ class _Feeds(threading.Thread):
     
     
     def initFeedRefreshTimers(self):
+        feeds_oneTimer=[]
         for feed in self.config.feeds:
             for name in feed:
                 if not feed[name]['enabled']:
                     continue
                 try:
                     refresh_time = feed[name]['refresh_delay']
+                    threading.Timer(refresh_time, self.timedFeedRefresh, (feed,name,refresh_time,)).start()
                 except KeyError:
-                    refresh_time = self.config.network['default_refresh_delay']
-                threading.Timer(refresh_time, self.timedFeedRefresh, (feed,name,refresh_time,)).start()
+                    feeds_oneTimer.append([feed, name])
+                
+        if feeds_oneTimer:
+            refresh_time = self.config.network['default_refresh_delay']
+            threading.Timer(refresh_time, self.timedFeedRefresh, (feeds_oneTimer,None,refresh_time,)).start()
     
     
     def timedFeedRefresh(self, feed, name, refresh_time):
-        self.feed_refresh(feed, name)
-        threading.Timer(refresh_time, self.timedFeedRefresh, (feed,name,refresh_time,)).start()
+        if not name:
+            for f,n in feed:
+                self.feed_refresh(f, n)
+            threading.Timer(refresh_time, self.timedFeedRefresh, (feed,None,refresh_time,)).start()
+        else:
+            self.feed_refresh(feed, name)
+            threading.Timer(refresh_time, self.timedFeedRefresh, (feed,name,refresh_time,)).start()
     
     
     def feed_refresh(self, feed, name):
@@ -241,7 +252,6 @@ class feedie(SimpleIRCClient):
         self.msg_queue = Queue()
         self.msg_queue_thread = threading.Thread(target=self.msq_queue_tasks, args=(self.connection, self.msg_queue, config.network['announce_delay'],))
         self.msg_queue_thread.setDaemon(1)
-        self.msg_queue_thread.start()
         self.history_manager()
         self.init_mircColors()
     
@@ -260,34 +270,6 @@ class feedie(SimpleIRCClient):
         self.msg_queue.put( (msg.strip(), target) )
     
     
-    def init_mircColors(self):
-        self.mircColors = dict({
-            'white': '0',
-            'black': '1',
-            'blue': '2',
-            'green': '3',
-            'red': '4',
-            'brown': '5',
-            'purple': '6',
-            'orange': '7',
-            'yellow': '8',
-            'light green': '9',
-            'teal': '10',
-            'light blue': '11',
-            'dark blue': '12',
-            'pink': '13',
-            'dark grey': '14',
-            'light grey': '15',
-            'dark gray': '14',
-            'light gray': '15',
-        })
-        self.BOLD = '\x02'
-        self.ITALIC = '\x1D'
-        self.UNDERLINE = '\x1F'
-        self.SWAP = '\x16'
-        self.END = '\x0F'
-    
-    
     def on_nicknameinuse(self, serv, ev):
         serv.nick(serv.get_nickname() + "_")
     
@@ -297,6 +279,8 @@ class feedie(SimpleIRCClient):
             serv.privmsg("nickserv", "IDENTIFY {}".format(config.network['password']))
             serv.privmsg("chanserv", "SET irc_auto_rejoin ON")
             serv.privmsg("chanserv", "SET irc_join_delay 0")
+        
+        self.msg_queue_thread.start()
         
         for name in config.feeds[0]:
             if not config.feeds[0][name]['enabled']:
@@ -457,6 +441,34 @@ class feedie(SimpleIRCClient):
         return s.replace('\x0f', '').replace('\x0F', '')
     
     
+    def init_mircColors(self):
+        self.mircColors = dict({
+            'white': '0',
+            'black': '1',
+            'blue': '2',
+            'green': '3',
+            'red': '4',
+            'brown': '5',
+            'purple': '6',
+            'orange': '7',
+            'yellow': '8',
+            'light green': '9',
+            'teal': '10',
+            'light blue': '11',
+            'dark blue': '12',
+            'pink': '13',
+            'dark grey': '14',
+            'light grey': '15',
+            'dark gray': '14',
+            'light gray': '15',
+        })
+        self.BOLD = '\x02'
+        self.ITALIC = '\x1D'
+        self.UNDERLINE = '\x1F'
+        self.SWAP = '\x16'
+        self.END = '\x0F'
+    
+    
     def mircColor(self, s, fg=None, bg=None):
         """Returns s with the appropriate mIRC color codes applied."""
         if fg is None and bg is None:
@@ -493,6 +505,8 @@ def main():
     except irc.client.ServerConnectionError as error:
         print(error)
         sys.exit(1)
+    except UnicodeDecodeError:
+        pass
 
 
 if __name__ == "__main__":
