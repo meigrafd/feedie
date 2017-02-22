@@ -109,8 +109,9 @@ class _Feeds(threading.Thread):
         except socket.timeout:
             return error('Timeout downloading feed.')
         except Exception as e:
-            # These seem mostly harmless.  We'll need reports of a kind that isn't.
-            print('Allowing bozo_exception "%r" through.' % e)
+            # These seem mostly harmless. We'll need reports of a kind that isn't.
+            #print('Allowing bozo_exception "%r" through.' % e)
+            pass
         if results.get('feed', {}):
             self.cachedFeeds[url] = results
             self.lastRequest[url] = time.time()
@@ -208,7 +209,9 @@ class _Feeds(threading.Thread):
                 self.bot.queue_send(text, self.config.feeds[0][name]['channel'])
 
 
+
 #-------------------------------------------------------------------
+
 
 
 class ReconnectStrategy(object):
@@ -305,44 +308,49 @@ class feedie(SimpleIRCClient):
     
     
     def on_ctcp(self, serv, ev):
-        a = ev.arguments[0].split(":", 1)
-        if a[0].upper() == 'VERSION':
-            serv.ctcp_reply(ev.source().split('!')[0], config.network['bot_name'])
+        nick = ev.source.nick
+        if ev.arguments[0] == "PING":
+            if len(ev.arguments) > 1:
+                serv.ctcp_reply(nick, "PING " + ev.arguments[1])
+        elif ev.arguments[0].upper() == 'VERSION':
+            serv.ctcp_reply(nick, config.network['bot_name'])
     
     
     def on_privmsg(self, serv, ev):
-        author = irc.nm_to_n(ev.source())
-        message = ev.arguments()[0].strip()
+        nick = ev.source.nick
+        message = ev.arguments[0]
+        serv.privmsg(nick, "You said: " + message)
         arguments = message.split(' ')
-        if author in config.feedie['bot_owner']:
+        
+        if nick in config.feedie['bot_owner']:
             if '.say' == arguments[0] and len(arguments) > 2:
                 serv.privmsg(arguments[1], message.replace(arguments[0], '').replace(arguments[1], '')[2:])
-            if '.act' == arguments[0] and len(arguments) > 2:
+            elif '.act' == arguments[0] and len(arguments) > 2:
                 serv.action(arguments[1], message.replace(arguments[0], '').replace(arguments[1], '')[2:])
-            if '.join' == arguments[0] and len(arguments) > 2:
+            elif '.join' == arguments[0] and len(arguments) > 2:
                 serv.join(message[3:])
-            if '.part' == arguments[0] and len(arguments) > 2:
+            elif '.part' == arguments[0] and len(arguments) > 2:
                 serv.part(message[3:])
     
     
     def on_pubmsg(self, serv, ev):
-        author = irc.nm_to_n(ev.source())
-        message = ev.arguments()[0].strip()
-        arguments = message.split(' ')
-        chan = ev.target()
+        nick = ev.source.nick
+        chan = ev.target
+        message = ev.arguments[0]
+        
         if config.network['pubmsg_log']:
             event_time = time.strftime('[%H:%M:%S]', time.localtime())
-            record = '{0} {1}: {2}'.format(event_time, author, message)
+            record = '{0} {1}@{2}: {3}'.format(event_time, nick, chan, message)
             with open(self.irc_entries, "a") as f:
                 f.write("{}\n".format(record))
             print(record)
         
-        if author in config.feedie['bot_owner']:
+        if nick in config.feedie['bot_owner']:
             try:
-                if ev.arguments()[0].lower() == config.feedie['cmd_prefix']+'restart':
+                if message.lower() == config.feedie['cmd_prefix']+'restart':
                     #self.restart_bot(serv, ev)
                     print("..missing feature..")
-                if ev.arguments()[0].lower() == config.feedie['cmd_prefix']+'quit':
+                elif message.lower() == config.feedie['cmd_prefix']+'quit':
                     serv.disconnect()
                     sys.exit(1)
             except OSError as error:
@@ -350,21 +358,21 @@ class feedie(SimpleIRCClient):
                 print(error)
                 sys.exit(1)
 
-        if config.feedie['cmd_prefix']+'help' == arguments[0].lower():
+        if config.feedie['cmd_prefix']+'help' == message.lower():
             serv.privmsg(
                 chan, '{0}{1}{2}{0}{1} {3}help || '
                       '{3}version || {3}uptime || {3}restart || {3}quit || {3}feeds'.format(
                             self.BOLD, self.UNDERLINE, self.mircColor("Available commands:", 'blue'), feedie['cmd_prefix']))
 
-        if config.feedie['cmd_prefix']+'version' == arguments[0].lower():
+        if config.feedie['cmd_prefix']+'version' == message.lower():
             serv.privmsg(chan, '{0}{1}{2}'.format(self.BOLD, self.mircColor(config.network['bot_name'], 'blue'), self.END))
 
-        if config.feedie['cmd_prefix']+'uptime' == arguments[0].lower():
+        if config.feedie['cmd_prefix']+'uptime' == message.lower():
             uptime_raw = round(time.time() - self.start_time)
             uptime = timedelta(seconds=uptime_raw)
-            serv.privmsg(chan, '{0}{1}{2} {2}{1}'.format(self.BOLD, self.mircColor("[UPTIME]", 'teal'), uptime, self.END))
+            serv.privmsg(chan, '{0}{1} {2} {3}'.format(self.BOLD, self.mircColor("[UPTIME]", 'teal'), uptime, self.END))
 
-        if config.feedie['cmd_prefix']+'feeds' == arguments[0].lower():
+        if config.feedie['cmd_prefix']+'feeds' == message.lower():
             for name in config.feeds[0]:
                 if not config.feeds[0][name]['enabled']:
                     continue

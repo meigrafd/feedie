@@ -1,4 +1,4 @@
 #!/bin/bash
 
 rm -f nohup.out
-nohup python3 feedie.py start & >/dev/null 2>&1
+(nohup python3 feedie.py start)& 2>&1 >/tmp/pybot
