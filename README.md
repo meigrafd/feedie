@@ -3,10 +3,9 @@
 ## Features
 
 * Easy configuration
-* No heavy database required
-* Support for additional commands
-* IRC Colors
+* Supports multiple Feeds and Channels
 * Supports short urls
+* IRC Colors
 
 
 ## Required:

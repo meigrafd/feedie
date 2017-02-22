@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 # -*- coding: utf-8 -*-
 #
-# IRC Bot to announce RSS FEED
+# IRC Bot to announce RSS FEEDS
 #
 #   Creator: meigrafd
 #   Copyright (C) 2017 by meiraspi@gmail.com published under the Creative Commons License (BY-NC-SA)
@@ -36,6 +36,12 @@ import itertools
 import threading
 import feedparser
 import config
+try:
+    # For >= Python3.4
+    import importlib as imp
+except ImportError:
+    # For <= Python3.3
+    import imp
 
 
 
@@ -255,6 +261,7 @@ class feedie(SimpleIRCClient):
         self.msg_queue = Queue()
         self.msg_queue_thread = threading.Thread(target=self.msq_queue_tasks, args=(self.connection, self.msg_queue, config.network['announce_delay'],))
         self.msg_queue_thread.setDaemon(1)
+        self.msg_queue_thread.start()
         self.history_manager()
         self.init_mircColors()
     
@@ -282,8 +289,6 @@ class feedie(SimpleIRCClient):
             serv.privmsg("nickserv", "IDENTIFY {}".format(config.network['password']))
             serv.privmsg("chanserv", "SET irc_auto_rejoin ON")
             serv.privmsg("chanserv", "SET irc_join_delay 0")
-        
-        self.msg_queue_thread.start()
         
         for name in config.feeds[0]:
             if not config.feeds[0][name]['enabled']:
@@ -347,10 +352,13 @@ class feedie(SimpleIRCClient):
         
         if nick in config.feedie['bot_owner']:
             try:
-                if message.lower() == config.feedie['cmd_prefix']+'restart':
+                if config.feedie['cmd_prefix']+'rehash' == message.lower():
+                    imp.reload(config)
+                    serv.privmsg(chan, '{0}'.format(self.bold(self.mircColor("Successfully rehashed.", 'blue'))))
+                elif config.feedie['cmd_prefix']+'restart' == message.lower():
                     #self.restart_bot(serv, ev)
-                    print("..missing feature..")
-                elif message.lower() == config.feedie['cmd_prefix']+'quit':
+                    print("missing feature: %s" % message)
+                elif config.feedie['cmd_prefix']+'quit' == message.lower():
                     serv.disconnect()
                     sys.exit(1)
             except OSError as error:
@@ -364,15 +372,15 @@ class feedie(SimpleIRCClient):
                       '{3}version || {3}uptime || {3}restart || {3}quit || {3}feeds'.format(
                             self.BOLD, self.UNDERLINE, self.mircColor("Available commands:", 'blue'), feedie['cmd_prefix']))
 
-        if config.feedie['cmd_prefix']+'version' == message.lower():
+        elif config.feedie['cmd_prefix']+'version' == message.lower():
             serv.privmsg(chan, '{0}{1}{2}'.format(self.BOLD, self.mircColor(config.network['bot_name'], 'blue'), self.END))
 
-        if config.feedie['cmd_prefix']+'uptime' == message.lower():
+        elif config.feedie['cmd_prefix']+'uptime' == message.lower():
             uptime_raw = round(time.time() - self.start_time)
             uptime = timedelta(seconds=uptime_raw)
             serv.privmsg(chan, '{0}{1} {2} {3}'.format(self.BOLD, self.mircColor("[UPTIME]", 'teal'), uptime, self.END))
 
-        if config.feedie['cmd_prefix']+'feeds' == message.lower():
+        elif config.feedie['cmd_prefix']+'feeds' == message.lower():
             for name in config.feeds[0]:
                 if not config.feeds[0][name]['enabled']:
                     continue
