@@ -20,6 +20,7 @@
 #
 
 from irc.client import SimpleIRCClient
+from jaraco.stream import buffer
 from datetime import timedelta
 from queue import Queue
 import re
@@ -47,9 +48,13 @@ except ImportError:
 
 def _termHandler(signalNumber, stackFrame):
     raise SystemExit('Signal #%s.' % signalNumber)
-
 signal.signal(signal.SIGTERM, _termHandler)
 
+
+#class IgnoreErrorsBuffer(buffer.DecodingLineBuffer):
+#    def handle_exception(self):
+#        pass
+#irc.client.ServerConnection.buffer_class = IgnoreErrorsBuffer
 
 
 class _Feeds(threading.Thread):
@@ -509,6 +514,9 @@ class feedie(SimpleIRCClient):
 def main():
     try:
         bot = feedie()
+        bot.buffer_class = buffer.LenientDecodingLineBuffer
+        irc.client.ServerConnection.buffer_class = buffer.LenientDecodingLineBuffer
+        irc.client.ServerConnection.buffer_class.errors = 'replace'
         bot.connect(config.network['server'], config.network['port'], config.network['bot_nick'], config.network['bot_name'])
         addon_feeds = _Feeds(bot, config).start()
         bot.start()
