@@ -57,6 +57,32 @@ signal.signal(signal.SIGTERM, _termHandler)
 #irc.client.ServerConnection.buffer_class = IgnoreErrorsBuffer
 
 
+class PeriodicExecutor(threading.Thread):
+    def __init__(self, interval, func, **kwargs):
+        """ Execute func(params) every 'interval' seconds """
+        threading.Thread.__init__(self, name="PeriodicExecutor")
+        self.setDaemon(1)
+        self._finished = threading.Event()
+        self._interval = interval
+        self._func = func
+        self._params = kwargs
+    
+    def setInterval(self, interval):
+        """Set the number of seconds we sleep between executing our task"""
+        self._interval = interval
+    
+    def shutdown(self):
+        """Stop this thread"""
+        self._finished.set()
+    
+    def run(self):
+        while 1:
+            if self._finished.isSet(): return
+            self._func(**self._params)
+            # sleep for interval or until shutdown
+            self._finished.wait(self._interval)
+
+
 class _Feeds(threading.Thread):
     def __init__(self, bot, config):
         threading.Thread.__init__(self)
@@ -73,10 +99,11 @@ class _Feeds(threading.Thread):
         self.service_url = self.services[config.feedie['shorten_service']]
         self.lastRequest = dict()
         self.cachedFeeds = dict()
+        self.feeds_num = sum(len(x) for x in self.config.feeds)
+        self.init_periodic_feedRefresh()
     
     
     def run(self):
-        self.initFeedRefreshTimers()
         signal.pause()
     
     
@@ -107,7 +134,7 @@ class _Feeds(threading.Thread):
         return headlines
     
     
-    def getFeed(self, url):
+    def getFeed(self, url, name):
         def error(s):
             return {'items': [{'title': s}]}
         try:
@@ -124,21 +151,22 @@ class _Feeds(threading.Thread):
             #print('Allowing bozo_exception "%r" through.' % e)
             pass
         if results.get('feed', {}):
-            self.cachedFeeds[url] = results
-            self.lastRequest[url] = time.time()
+            self.cachedFeeds[name] = results
+            self.lastRequest[name] = time.time()
         else:
             print('Not caching results; feed is empty.')
         try:
-            return self.cachedFeeds[url]
+            return self.cachedFeeds[name]
         except KeyError:
             # If there's a problem retrieving the feed, we should back off
             # for a little bit before retrying so that there is time for
             # the error to be resolved.
-            self.lastRequest[url] = time.time() - .5 * 180
+            self.lastRequest[name] = time.time() - .5 * 180
             return error('Unable to download feed.')
     
     
-    def initFeedRefreshTimers(self):
+    def init_periodic_feedRefresh(self):
+        self.feed_thread = dict()
         feeds_oneTimer=[]
         for feed in self.config.feeds:
             for name in feed:
@@ -146,38 +174,33 @@ class _Feeds(threading.Thread):
                     continue
                 try:
                     refresh_time = feed[name]['refresh_delay']
-                    threading.Timer(refresh_time, self.timedFeedRefresh, (feed,name,refresh_time,)).start()
+                    self.feed_thread[name] = PeriodicExecutor(refresh_time, self.feed_refresh, feed=feed, name=name).start()
                 except KeyError:
                     feeds_oneTimer.append([feed, name])
-                
+        
         if feeds_oneTimer:
             refresh_time = self.config.network['default_refresh_delay']
-            threading.Timer(refresh_time, self.timedFeedRefresh, (feeds_oneTimer,None,refresh_time,)).start()
+            self.feed_thread["__oneTimer__"] = PeriodicExecutor(refresh_time, self.feed_refresh_oneTimer, feeds=feeds_oneTimer).start()
     
     
-    def timedFeedRefresh(self, feed, name, refresh_time):
-        if not name:
-            for f,n in feed:
-                self.feed_refresh(f, n)
-            threading.Timer(refresh_time, self.timedFeedRefresh, (feed,None,refresh_time,)).start()
-        else:
+    def feed_refresh_oneTimer(self, feeds):
+        for feed, name in feeds:
             self.feed_refresh(feed, name)
-            threading.Timer(refresh_time, self.timedFeedRefresh, (feed,name,refresh_time,)).start()
     
     
     def feed_refresh(self, feed, name):
         url = feed[name]['url']
         try:
-            oldresults = self.cachedFeeds[url]
+            oldresults = self.cachedFeeds[name]
             oldheadlines = self.getHeadlines(oldresults)
         except KeyError:
             oldheadlines = []
         
         if not self.config.network['startup_announces'] and not oldheadlines:
-            newresults = self.getFeed(url)
+            newresults = self.getFeed(url, name)
             return
         else:
-            newresults = self.getFeed(url)
+            newresults = self.getFeed(url, name)
             newheadlines = self.getHeadlines(newresults)
         
         if len(newheadlines) == 1:
@@ -277,7 +300,8 @@ class feedie(SimpleIRCClient):
             try:
                 connection.privmsg(target, msg)
             except irc.client.ServerNotConnectedError as error:
-                print(error)
+                print("Error: %s" % error)
+                self.jump_server()
             time.sleep(delay)
     
     
