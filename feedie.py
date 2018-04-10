@@ -399,7 +399,7 @@ class feedie(SimpleIRCClient):
             serv.privmsg(
                 chan, '{0}{1}{2}{0}{1} {3}help || '
                       '{3}version || {3}uptime || {3}restart || {3}quit || {3}feeds'.format(
-                            self.BOLD, self.UNDERLINE, self.mircColor("Available commands:", 'blue'), feedie['cmd_prefix']))
+                            self.BOLD, self.UNDERLINE, self.mircColor("Available commands:", 'blue'), config.feedie['cmd_prefix']))
 
         elif config.feedie['cmd_prefix']+'version' == message.lower():
             serv.privmsg(chan, '{0}{1}{2}'.format(self.BOLD, self.mircColor(config.network['bot_name'], 'blue'), self.END))
